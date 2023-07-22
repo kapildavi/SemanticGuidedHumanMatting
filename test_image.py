@@ -32,6 +32,7 @@ import inference
 parser = argparse.ArgumentParser(description='Test Images')
 parser.add_argument('--images-dir', type=str, required=True)
 parser.add_argument('--result-dir', type=str, required=True)
+parser.add_argument('--matte-dir', type=str, required=True)
 parser.add_argument('--gt-dir', type=str, default=None)
 parser.add_argument('--pretrained-weight', type=str, required=True)
 
@@ -75,7 +76,7 @@ mean_iou = 0.0
 # Process 
 for i in range(num_image):
     image_path = image_list[i]
-    image_name = image_path[image_path.rfind('/')+1:image_path.rfind('.')]
+    image_name = image_path[image_path.rfind('\\')+1:image_path.rfind('.')]
     print(i, '/', num_image, image_name)
 
     with Image.open(image_path) as img:
@@ -107,12 +108,33 @@ for i in range(num_image):
         mean_conn += batch_conn
         mean_iou += batch_iou
 
-    # save results
-    output_dir = args.result_dir + image_path[len(args.images_dir):image_path.rfind('/')]
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    save_path = output_dir + '/' + image_name + '.png'
-    Image.fromarray(((pred_alpha * 255).astype('uint8')), mode='L').save(save_path)
 
+    Image.fromarray(((pred_alpha * 255).astype('uint8')), mode='L').save(args.matte_dir + "\\" + image_name + "matte" + '.jpg')
+
+    #
+    #
+    #
+    # #create bgr image
+    matte = Image.open(args.matte_dir + "\\" + image_name + "matte" + '.jpg')
+    img = Image.open(image_path)
+    # calculate display resolution
+    w, h = img.width, img.height
+    rw, rh = 800, int(h * 800 / (3 * w))
+
+    # obtain predicted foreground
+    image = np.asarray(img)
+    if len(image.shape) == 2:
+        image = image[:, :, None]
+    if image.shape[2] == 1:
+        image = np.repeat(image, 3, axis=2)
+    elif image.shape[2] == 4:
+        image = image[:, :, 0:3]
+    matte = np.repeat(np.asarray(matte)[:, :, None], 3, axis=2) / 255
+    foreground = image * matte + np.full(image.shape, 255) * (1 - matte)
+    combined = Image.fromarray(np.uint8(foreground))
+    combined.save(os.path.join(args.result_dir + "\\" + image_name + 'bgr.jpg'),"PNG")
+
+
+d
 print("Total mean mad ", mean_mad/num_image, " mean mse ", mean_mse/num_image, " mean grad ", \
     mean_grad/num_image, " mean conn ", mean_conn/num_image, " mean iou ", mean_iou/num_image)
